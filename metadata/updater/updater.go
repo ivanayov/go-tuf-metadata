@@ -67,11 +67,14 @@ func New(config *config.UpdaterConfig) (*Updater, error) {
 	if len(config.LocalTrustedRoot) == 0 || len(config.RemoteMetadataURL) == 0 {
 		return nil, fmt.Errorf("no initial trusted root metadata or remote URL provided")
 	}
+
 	// create a new trusted metadata instance using the trusted root.json
 	trustedMetadataSet, err := trustedmetadata.New(config.LocalTrustedRoot)
 	if err != nil {
+		log.Printf("failed to create trusted metadata set: %v", err)
 		return nil, err
 	}
+
 	// create an updater instance
 	updater := &Updater{
 		cfg:     config,
@@ -80,6 +83,7 @@ func New(config *config.UpdaterConfig) (*Updater, error) {
 	// ensure paths exist, doesn't do anything if caching is disabled
 	err = updater.cfg.EnsurePathsExist()
 	if err != nil {
+		log.Printf("failed to ensure updater config path exists: %v", err)
 		return nil, err
 	}
 	// persist the initial root metadata to the local metadata folder
@@ -105,18 +109,22 @@ func New(config *config.UpdaterConfig) (*Updater, error) {
 func (update *Updater) Refresh() error {
 	err := update.loadRoot()
 	if err != nil {
+		log.Printf("failed to load root: %v", err)
 		return err
 	}
 	err = update.loadTimestamp()
 	if err != nil {
+		log.Printf("failed to load timestamp: %v", err)
 		return err
 	}
 	err = update.loadSnapshot()
 	if err != nil {
+		log.Printf("failed to load snapshot: %v", err)
 		return err
 	}
 	_, err = update.loadTargets(metadata.TARGETS, metadata.ROOT)
 	if err != nil {
+		log.Printf("failed to load targets: %v", err)
 		return err
 	}
 	return nil
@@ -233,6 +241,7 @@ func (update *Updater) FindCachedTarget(targetFile *metadata.TargetFiles, filePa
 func (update *Updater) loadTimestamp() error {
 	// try to read local timestamp
 	data, err := update.loadLocalMetadata(filepath.Join(update.cfg.LocalMetadataDir, metadata.TIMESTAMP))
+	fmt.Printf("DATA: %s\n", string(data))
 	if err != nil {
 		// this means there's no existing local timestamp so we should proceed downloading it without the need to UpdateTimestamp
 		log.Debug("Local timestamp does not exist")
