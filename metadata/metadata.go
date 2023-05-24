@@ -74,10 +74,12 @@ func Snapshot(expires ...time.Time) *Metadata[SnapshotType] {
 	log.Debugf("Created a metadata of type %s", SNAPSHOT)
 	return &Metadata[SnapshotType]{
 		Signed: SnapshotType{
-			Type:        SNAPSHOT,
-			SpecVersion: SPECIFICATION_VERSION,
-			Version:     1,
-			Expires:     expires[0],
+			BaseType: BaseType{
+				Type:        SNAPSHOT,
+				SpecVersion: SPECIFICATION_VERSION,
+				Version:     1,
+				Expires:     expires[0],
+			},
 			Meta: map[string]*MetaFiles{
 				"targets.json": {
 					Version: 1,
@@ -97,10 +99,12 @@ func Timestamp(expires ...time.Time) *Metadata[TimestampType] {
 	log.Debugf("Created a metadata of type %s", TIMESTAMP)
 	return &Metadata[TimestampType]{
 		Signed: TimestampType{
-			Type:        TIMESTAMP,
-			SpecVersion: SPECIFICATION_VERSION,
-			Version:     1,
-			Expires:     expires[0],
+			BaseType: BaseType{
+				Type:        TIMESTAMP,
+				SpecVersion: SPECIFICATION_VERSION,
+				Version:     1,
+				Expires:     expires[0],
+			},
 			Meta: map[string]*MetaFiles{
 				"snapshot.json": {
 					Version: 1,
@@ -120,11 +124,12 @@ func Targets(expires ...time.Time) *Metadata[TargetsType] {
 	log.Debugf("Created a metadata of type %s", TARGETS)
 	return &Metadata[TargetsType]{
 		Signed: TargetsType{
-			Type:        TARGETS,
-			SpecVersion: SPECIFICATION_VERSION,
-			Version:     1,
-			Expires:     expires[0],
-			Targets:     map[string]*TargetFiles{},
+			BaseType: BaseType{
+				Type:        TARGETS,
+				SpecVersion: SPECIFICATION_VERSION,
+				Version:     1,
+				Expires:     expires[0]},
+			Targets: map[string]*TargetFiles{},
 		},
 		Signatures: []Signature{},
 	}

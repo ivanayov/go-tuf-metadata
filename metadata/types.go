@@ -35,6 +35,8 @@ const (
 	TIMESTAMP = "timestamp"
 )
 
+var TOP_LEVEL_ROLE_NAMES = [...]string{ROOT, TIMESTAMP, SNAPSHOT, TARGETS}
+
 // Metadata[T Roles] represents a TUF metadata.
 // Provides methods to read and write to and
 // from file and bytes, also to create, verify and clear metadata signatures.
@@ -42,6 +44,22 @@ type Metadata[T Roles] struct {
 	Signed             T              `json:"signed"`
 	Signatures         []Signature    `json:"signatures"`
 	UnrecognizedFields map[string]any `json:"-"`
+}
+
+func (md *Metadata[BaseType]) GetType() int64 {
+	return md.GetType()
+}
+
+func (md *Metadata[BaseType]) GetSpecVersion() int64 {
+	return md.GetSpecVersion()
+}
+
+func (md *Metadata[BaseType]) GetVersion() int64 {
+	return md.GetVersion()
+}
+
+func (md *Metadata[BaseType]) GetExpires() int64 {
+	return md.GetExpires()
 }
 
 // Signature represents the Signature part of a TUF metadata
@@ -63,22 +81,41 @@ type RootType struct {
 	UnrecognizedFields map[string]any   `json:"-"`
 }
 
+// BaseType contains all common fields for all
+// metadata types
+type BaseType struct {
+	Type        string    `json:"_type"`
+	SpecVersion string    `json:"spec_version"`
+	Version     int64     `json:"version"`
+	Expires     time.Time `json:"expires"`
+}
+
+func (bs *BaseType) GetType() string {
+	return bs.Type
+}
+
+func (bs *BaseType) GetSpecVersion() string {
+	return bs.SpecVersion
+}
+
+func (bs *BaseType) GetVersion() int64 {
+	return bs.Version
+}
+
+func (bs *BaseType) GetExpires() time.Time {
+	return bs.Expires
+}
+
 // SnapshotType represents the Signed portion of a snapshot metadata
 type SnapshotType struct {
-	Type               string                `json:"_type"`
-	SpecVersion        string                `json:"spec_version"`
-	Version            int64                 `json:"version"`
-	Expires            time.Time             `json:"expires"`
+	BaseType
 	Meta               map[string]*MetaFiles `json:"meta"`
 	UnrecognizedFields map[string]any        `json:"-"`
 }
 
 // TargetsType represents the Signed portion of a targets metadata
 type TargetsType struct {
-	Type               string                  `json:"_type"`
-	SpecVersion        string                  `json:"spec_version"`
-	Version            int64                   `json:"version"`
-	Expires            time.Time               `json:"expires"`
+	BaseType
 	Targets            map[string]*TargetFiles `json:"targets"`
 	Delegations        *Delegations            `json:"delegations,omitempty"`
 	UnrecognizedFields map[string]any          `json:"-"`
@@ -86,10 +123,7 @@ type TargetsType struct {
 
 // TimestampType represents the Signed portion of a timestamp metadata
 type TimestampType struct {
-	Type               string                `json:"_type"`
-	SpecVersion        string                `json:"spec_version"`
-	Version            int64                 `json:"version"`
-	Expires            time.Time             `json:"expires"`
+	BaseType
 	Meta               map[string]*MetaFiles `json:"meta"`
 	UnrecognizedFields map[string]any        `json:"-"`
 }
