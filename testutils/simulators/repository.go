@@ -190,10 +190,8 @@ func (rs *RepositorySimulator) AllTargets() <-chan metadata.TargetsType {
 		ch <- metadata.TargetsType{}
 		for role, md := range rs.MDDelegates {
 			targets := metadata.TargetsType{
-				BaseType: metadata.BaseType{
-					Type:    role,
-					Version: md.Signed.Version,
-				},
+				Type:        role,
+				Version:     md.Signed.Version,
 				Delegations: md.Signed.Delegations,
 			}
 			ch <- targets
@@ -265,49 +263,56 @@ func lastIndex(str string, delimiter string) (string, string, string) {
 
 func partition(s string, delimiter string) (string, string) {
 	splitted := strings.Split(s, delimiter)
-	// TODO: check length
-	return splitted[0], splitted[2]
+	version := ""
+	role := ""
+	switch len(splitted) {
+	case 1:
+		role = splitted[0]
+	case 2:
+		version = splitted[0]
+		role = splitted[1]
+
+	}
+	return version, role
 }
 
-func (rs *RepositorySimulator) fetch(u string) <-chan []byte {
-	out := make(chan []byte)
-	go func() {
-		defer close(out)
-		parsedURL, _ := url.Parse(u)
-		path := parsedURL.Path
-		if strings.HasPrefix(path, "/metadata/") && strings.HasSuffix(path, ".json") {
-			verAndName := path[len("/metadata/"):][:len(path)-len("/metadata/")-len(".json")]
-			versionStr, role := partition(verAndName, ".")
-			var version int
-			var err error
-			if role == metadata.ROOT || (rs.MDRoot.Signed.ConsistentSnapshot && verAndName != metadata.TIMESTAMP) {
-				version, err = strconv.Atoi(versionStr)
-				if err != nil {
-					return
-				}
-			} else {
-				role = verAndName
-				version = 0
-			}
-			out <- rs.FetchMetadata(role, &version)
-		} else if strings.HasPrefix(path, "/targets/") {
-			targetPath := path[len("/targets/"):]
-			dirParts, sep, prefixedFilename := lastIndex(targetPath, "/")
-			var filename string
-			prefix := ""
-			filename = prefixedFilename
-			if rs.MDRoot.Signed.ConsistentSnapshot && rs.PrefixTargetsWithHash {
-				prefix, filename = partition(prefixedFilename, ".")
-			}
-			targetPath = fmt.Sprintf("%s%s%s", dirParts, sep, filename)
-			target, err := rs.FetchTarget(targetPath, prefix)
+// TODO: should implement Fetcher DownloadFile
+func (rs *RepositorySimulator) DownloadFile(urlPath string, maxLength int64) ([]byte, error) {
+	parsedURL, _ := url.Parse(urlPath)
+	path := strings.TrimPrefix(parsedURL.Path, LocalDir)
+	if strings.HasPrefix(path, "/metadata/") && strings.HasSuffix(path, ".json") {
+		fileName := path[len("/metadata/"):]
+		verAndName := fileName[:len(path)-len("/metadata/")-len(".json")]
+		versionStr, role := partition(verAndName, ".")
+		var version int
+		var err error
+		if role == metadata.ROOT || (rs.MDRoot.Signed.ConsistentSnapshot && verAndName != metadata.TIMESTAMP) {
+			version, err = strconv.Atoi(versionStr)
 			if err != nil {
-				log.Printf("failed to fetch target: %v", err)
+				log.Printf("repository simulator: downloading file: failed to convert version : %v", err)
 			}
-			out <- target
+		} else {
+			role = verAndName
+			version = -1
 		}
-	}()
-	return out
+		return rs.FetchMetadata(role, &version)
+	} else if strings.HasPrefix(path, "/targets/") {
+		targetPath := path[len("/targets/"):]
+		dirParts, sep, prefixedFilename := lastIndex(targetPath, "/")
+		var filename string
+		prefix := ""
+		filename = prefixedFilename
+		if rs.MDRoot.Signed.ConsistentSnapshot && rs.PrefixTargetsWithHash {
+			prefix, filename = partition(prefixedFilename, ".")
+		}
+		targetPath = fmt.Sprintf("%s%s%s", dirParts, sep, filename)
+		target, err := rs.FetchTarget(targetPath, prefix)
+		if err != nil {
+			log.Printf("failed to fetch target: %v", err)
+		}
+		return target, err
+	}
+	return nil, nil
 }
 
 // FetchTarget returns data for 'targetPath', checking 'targetHash' if it is given.
@@ -336,54 +341,60 @@ func contains(hashes map[string]metadata.HexBytes, targetHash []byte) bool {
 
 // FetchMetadata returns signed metadata for 'role', using 'version' if it is given.
 // If version is None, non-versioned metadata is being requested
-func (rs *RepositorySimulator) FetchMetadata(role string, version *int) []byte {
+// TODO: return err
+func (rs *RepositorySimulator) FetchMetadata(role string, version *int) ([]byte, error) {
 	rs.FetchTracker.Metadata = append(rs.FetchTracker.Metadata, FTMetadata{name: role, value: version})
 	// Decode role for the metadata
-	role, _ = strconv.Unquote(role)
+	// role, _ = strconv.Unquote(role)
 	if role == metadata.ROOT {
 		// Return a version previously serialized in PublishRoot()
 		if version == nil || *version > len(rs.SignedRoots) && *version > 0 {
-			log.Fatalf("unknown root version %d", version)
+			log.Printf("unknown root version %d", *version)
+			return []byte{}, metadata.ErrDownloadHTTP{StatusCode: 404}
 		}
 		log.Printf("fetched root version %d", version)
-		return rs.SignedRoots[*version-1]
+		return rs.SignedRoots[*version-1], nil
 	}
 
 	// Sign and serialize the requested metadata
 	if role == metadata.TIMESTAMP {
-		return signMetadata(role, &metadata.Metadata[metadata.TimestampType]{}, rs)
+		return signMetadata(role, rs.MDTimestamp, rs)
 	} else if role == metadata.SNAPSHOT {
-		return signMetadata(role, &metadata.Metadata[metadata.SnapshotType]{}, rs)
+		return signMetadata(role, rs.MDSnapshot, rs)
 	} else if role == metadata.TARGETS {
-		return signMetadata(role, &metadata.Metadata[metadata.TargetsType]{}, rs)
+		return signMetadata(role, rs.MDTargets, rs)
 	} else {
 		md, ok := rs.MDDelegates[role]
 		if !ok {
-			log.Fatalf("unknown role %s", role)
+			log.Printf("unknown role %s", role)
+			return []byte{}, metadata.ErrDownloadHTTP{StatusCode: 404}
 		}
 		return signMetadata(role, &md, rs)
 	}
 }
 
-func signMetadata[T metadata.Roles](role string, md *metadata.Metadata[T], rs *RepositorySimulator) []byte {
+func signMetadata[T metadata.Roles](role string, md *metadata.Metadata[T], rs *RepositorySimulator) ([]byte, error) {
 	md.Signatures = []metadata.Signature{}
 	for _, signer := range rs.Signers[role] {
 		// TODO: check if a bool argument should be added to Sign as in python-tuf
-		// Not appending only for a local repo example
+		// Not appending only for a local repo example !!! missing type for signers
 		md.Sign(*signer)
 	}
 	// TODO: test if the version is the correct one
-	log.Printf("fetched %s v%d with %d sigs", role, md.GetVersion(), len(rs.Signers[role]))
+	// log.Printf("fetched %s v%d with %d sigs", role, md.GetVersion(), len(rs.Signers[role]))
 	mtd, err := md.MarshalJSON()
 	if err != nil {
 		log.Printf("failed to marshal metadata while signing for role %s: %v", role, err)
 	}
-	return mtd
+	return mtd, err
 }
 
 func (rs *RepositorySimulator) computeHashesAndLength(role string) (map[string]metadata.HexBytes, int) {
 	noVersion := -1
-	data := rs.FetchMetadata(role, &noVersion)
+	data, err := rs.FetchMetadata(role, &noVersion)
+	if err != nil {
+		//TODO
+	}
 	digest := sha256.Sum256(data)
 	hashes := map[string]metadata.HexBytes{"sha256": digest[:]}
 	return hashes, len(data)
@@ -505,9 +516,7 @@ func (rs *RepositorySimulator) AddSuccinctRoles(delegatorName string, bitLength 
 	for _, delegatedName := range succinctRoles.GetRoles() {
 		rs.MDDelegates[delegatedName] = metadata.Metadata[metadata.TargetsType]{
 			Signed: metadata.TargetsType{
-				BaseType: metadata.BaseType{
-					Expires: rs.SafeExpiry,
-				},
+				Expires: rs.SafeExpiry,
 			},
 		}
 		rs.AddSigner(delegatedName, mdkey.ID(), *signer)
@@ -527,21 +536,33 @@ func (rs *RepositorySimulator) Write() {
 	rs.DumpVersion += 1
 	destDir := filepath.Join(rs.DumpDir, strconv.Itoa(int(rs.DumpVersion)))
 	os.MkdirAll(destDir, os.ModePerm)
-	for ver := 1; ver <= len(rs.SignedRoots)+1; ver++ {
+	for ver := 1; ver < len(rs.SignedRoots)+1; ver++ {
 		f, _ := os.Create(filepath.Join(destDir, fmt.Sprintf("%d.root.json", ver)))
 		defer f.Close()
-		f.Write(rs.FetchMetadata(metadata.ROOT, &ver))
+		meta, err := rs.FetchMetadata(metadata.ROOT, &ver)
+		if err != nil {
+			//TODO
+		}
+		f.Write(meta)
 	}
 	noVersion := -1
 	for _, role := range []string{metadata.TIMESTAMP, metadata.SNAPSHOT, metadata.TARGETS} {
 		f, _ := os.Create(filepath.Join(destDir, fmt.Sprintf("%s.json", role)))
 		defer f.Close()
-		f.Write(rs.FetchMetadata(role, &noVersion))
+		meta, err := rs.FetchMetadata(role, &noVersion)
+		if err != nil {
+			//TODO
+		}
+		f.Write(meta)
 	}
 	for role := range rs.MDDelegates {
 		quotedRole := url.PathEscape(role)
 		f, _ := os.Create(filepath.Join(destDir, fmt.Sprintf("%s.json", quotedRole)))
 		defer f.Close()
-		f.Write(rs.FetchMetadata(role, &noVersion))
+		meta, err := rs.FetchMetadata(role, &noVersion)
+		if err != nil {
+			//TODO
+		}
+		f.Write(meta)
 	}
 }
