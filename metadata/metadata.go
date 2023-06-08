@@ -74,12 +74,10 @@ func Snapshot(expires ...time.Time) *Metadata[SnapshotType] {
 	log.Debugf("Created a metadata of type %s", SNAPSHOT)
 	return &Metadata[SnapshotType]{
 		Signed: SnapshotType{
-			BaseType: BaseType{
-				Type:        SNAPSHOT,
-				SpecVersion: SPECIFICATION_VERSION,
-				Version:     1,
-				Expires:     expires[0],
-			},
+			Type:        SNAPSHOT,
+			SpecVersion: SPECIFICATION_VERSION,
+			Version:     1,
+			Expires:     expires[0],
 			Meta: map[string]*MetaFiles{
 				"targets.json": {
 					Version: 1,
@@ -99,12 +97,10 @@ func Timestamp(expires ...time.Time) *Metadata[TimestampType] {
 	log.Debugf("Created a metadata of type %s", TIMESTAMP)
 	return &Metadata[TimestampType]{
 		Signed: TimestampType{
-			BaseType: BaseType{
-				Type:        TIMESTAMP,
-				SpecVersion: SPECIFICATION_VERSION,
-				Version:     1,
-				Expires:     expires[0],
-			},
+			Type:        TIMESTAMP,
+			SpecVersion: SPECIFICATION_VERSION,
+			Version:     1,
+			Expires:     expires[0],
 			Meta: map[string]*MetaFiles{
 				"snapshot.json": {
 					Version: 1,
@@ -124,12 +120,11 @@ func Targets(expires ...time.Time) *Metadata[TargetsType] {
 	log.Debugf("Created a metadata of type %s", TARGETS)
 	return &Metadata[TargetsType]{
 		Signed: TargetsType{
-			BaseType: BaseType{
-				Type:        TARGETS,
-				SpecVersion: SPECIFICATION_VERSION,
-				Version:     1,
-				Expires:     expires[0]},
-			Targets: map[string]*TargetFiles{},
+			Type:        TARGETS,
+			SpecVersion: SPECIFICATION_VERSION,
+			Version:     1,
+			Expires:     expires[0],
+			Targets:     map[string]*TargetFiles{},
 		},
 		Signatures: []Signature{},
 	}
@@ -367,14 +362,13 @@ func (meta *Metadata[T]) VerifyDelegate(delegatedRole string, delegatedMetadata 
 		// verify if the signature for that payload corresponds to the given key
 		if err := verifier.VerifySignature(bytes.NewReader(sign.Signature), bytes.NewReader(payload)); err != nil {
 			// failed to verify the metadata with that key ID
-			log.Debugf("Failed to verify %s with key ID %s", delegatedRole, keyID)
+			log.Debugf("failed to verify %s with key ID %s: %v", delegatedRole, keyID, err)
 		} else {
 			// save the verified keyID only if verification passed
 			signingKeys[keyID] = true
 			log.Debugf("Verified %s with key ID %s", delegatedRole, keyID)
 		}
 	}
-	// check if the amount of valid signatures is enough
 	if len(signingKeys) < roleThreshold {
 		log.Infof("Verifying %s failed, not enough signatures, got %d, want %d", delegatedRole, len(signingKeys), roleThreshold)
 		return ErrUnsignedMetadata{Msg: fmt.Sprintf("Verifying %s failed, not enough signatures, got %d, want %d", delegatedRole, len(signingKeys), roleThreshold)}
