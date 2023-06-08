@@ -16,11 +16,20 @@ import (
 	"os"
 )
 
-var downloadPath = "/download"
-var metadataPath = "/metadata"
-var targetsPath = "/targets"
+var (
+	MetadataURL = "https://jku.github.io/tuf-demo/metadata"
+	TargetsURL  = "https://jku.github.io/tuf-demo/targets"
+)
 
-func InitLocalEnv() (string, error) {
+var (
+	// downloadPath = "/download"
+	metadataPath = "/metadata"
+	targetsPath  = "/targets"
+	LocalDir     string
+	DumpDir      string
+)
+
+func InitLocalEnv() error {
 
 	tmp := fs.TempDir()
 
@@ -29,19 +38,18 @@ func InitLocalEnv() (string, error) {
 		log.Fatal("failed to create temporary directory: ", err)
 	}
 
-	// create a destination folder for storing the downloaded target
-	fs.Mkdir(tmpDir + downloadPath)
 	fs.Mkdir(tmpDir + metadataPath)
 	fs.Mkdir(tmpDir + targetsPath)
-	return tmpDir, nil
+	LocalDir = tmpDir
+	return nil
 }
 
-func InitMetadataDir() (string, string, error) {
-	localDir, err := InitLocalEnv()
+func InitMetadataDir() (*RepositorySimulator, string, string, error) {
+	err := InitLocalEnv()
 	if err != nil {
 		log.Fatal("failed to initialize environment: ", err)
 	}
-	metadataDir := localDir + metadataPath
+	metadataDir := LocalDir + metadataPath
 
 	sim := NewRepository()
 
@@ -51,8 +59,12 @@ func InitMetadataDir() (string, string, error) {
 	}
 
 	f.Write(sim.SignedRoots[0])
-	targetsDir := localDir + targetsPath
-	return metadataDir, targetsDir, err
+
+	// if len(DumpDir) > 0 {
+
+	// }
+	targetsDir := LocalDir + targetsPath
+	return sim, metadataDir, targetsDir, err
 }
 
 func GetRootBytes(localMetadataDir string) ([]byte, error) {

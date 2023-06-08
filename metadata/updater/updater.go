@@ -241,7 +241,6 @@ func (update *Updater) FindCachedTarget(targetFile *metadata.TargetFiles, filePa
 func (update *Updater) loadTimestamp() error {
 	// try to read local timestamp
 	data, err := update.loadLocalMetadata(filepath.Join(update.cfg.LocalMetadataDir, metadata.TIMESTAMP))
-	fmt.Printf("DATA: %s\n", string(data))
 	if err != nil {
 		// this means there's no existing local timestamp so we should proceed downloading it without the need to UpdateTimestamp
 		log.Debug("Local timestamp does not exist")
@@ -419,7 +418,7 @@ func (update *Updater) loadRoot() error {
 	upperBound := lowerBound + update.cfg.MaxRootRotations
 
 	// loop until we find the latest available version of root (download -> verify -> load -> persist)
-	for nextVersion := lowerBound; nextVersion <= upperBound; nextVersion++ {
+	for nextVersion := lowerBound; nextVersion < upperBound; nextVersion++ {
 		data, err := update.downloadMetadata(metadata.ROOT, update.cfg.RootMaxLength, strconv.FormatInt(nextVersion, 10))
 		if err != nil {
 			// downloading the root metadata failed for some reason
@@ -427,22 +426,25 @@ func (update *Updater) loadRoot() error {
 			if errors.As(err, &tmpErr) {
 				if tmpErr.StatusCode != http.StatusNotFound && tmpErr.StatusCode != http.StatusForbidden {
 					// unexpected HTTP status code
+					log.Debugf("failed to download metadata: unexpected HTTP status code: %d, %v", tmpErr.StatusCode, err)
 					return err
 				}
-				// 404/403 means current root is newest available, so we can stop the loop and move forward
 				break
 			}
 			// some other error ocurred
+			log.Debugf("failed to download metadata: %v", err)
 			return err
 		} else {
 			// downloading root metadata succeeded, so let's try to verify and load it
 			_, err = update.trusted.UpdateRoot(data)
 			if err != nil {
+				log.Printf("failed to update root: %v", err)
 				return err
 			}
 			// persist root metadata to disk
 			err = update.persistMetadata(metadata.ROOT, data)
 			if err != nil {
+				log.Printf("failed to persist metadata: %v", err)
 				return err
 			}
 		}
